@@ -6,24 +6,32 @@ const TimeSeriesChart = ({ waterPolygon }) => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (waterPolygon) {
-            setLoading(true);
-            axios.post('http://localhost:5000/api/timeseries', { waterPolygon })
-                .then(res => {
-                    const formattedData = res.data.timeseries.map(d => ({
-                        ...d,
-                        area: parseFloat((d.area / 1e6).toFixed(2)) // Convert to sq km
-                    }));
-                    setData(formattedData);
-                    setLoading(false);
-                })
-                .catch(err => {
-                    console.error("Time-series fetch failed:", err);
-                    setLoading(false);
-                });
+useEffect(() => {
+    const fetchTimeSeries = async () => {
+        setLoading(true);
+        try {
+            // UPDATED: Use environment variable for the API URL
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/timeseries`,
+                { waterPolygon }
+            );
+            
+            const formattedData = res.data.timeseries.map(d => ({
+                ...d,
+                area: parseFloat((d.area / 1e6).toFixed(2))
+            }));
+            setData(formattedData);
+        } catch (err) {
+            console.error("Time-series fetch failed:", err);
+        } finally {
+            setLoading(false);
         }
-    }, [waterPolygon]);
+    };
+
+    if (waterPolygon) {
+        fetchTimeSeries();
+    }
+}, [waterPolygon]);
 
     if (!waterPolygon) return <div className="panel-placeholder">Search for a dam to see its historical data.</div>;
     if (loading) return <div className="panel-placeholder">Loading historical data... 📈</div>;

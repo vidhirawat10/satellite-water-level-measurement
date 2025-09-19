@@ -15,11 +15,11 @@ const AnalysisPanel = ({ waterPolygon }) => {
                 setAnalysis(null);
                 try {
                     // Make the API call with a longer timeout
-                    const res = await axios.post(
-                        'http://localhost:5000/api/analyze', 
-                        { waterPolygon },
-                        { timeout: 60000 } // <-- FIX: Wait up to 60 seconds for a response
-                    );
+const res = await axios.post(
+    `${process.env.REACT_APP_API_URL}/api/analyze`,
+    { waterPolygon }, 
+    { timeout: 60000 }
+);
                     
                     const sortedTiers = res.data.analysis.tieredResults.sort((a, b) => a.area_sqm - b.area_sqm);
                     

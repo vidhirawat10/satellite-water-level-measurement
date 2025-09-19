@@ -5,19 +5,20 @@ const Dashboard = () => {
     const [history, setHistory] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchHistory = async () => {
-            try {
-                const response = await axios.get('http://localhost:5000/api/history');
-                setHistory(response.data);
-            } catch (error) {
-                console.error("Failed to fetch history", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchHistory();
-    }, []); // Empty array means this runs once when the component mounts
+useEffect(() => {
+    const fetchHistory = async () => {
+        try {
+            // UPDATED: Use environment variable for the API URL
+            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/history`);
+            setHistory(response.data);
+        } catch (error) {
+            console.error("Failed to fetch history", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+    fetchHistory();
+}, []); // Empty array means this runs once when the component mounts
 
     if (loading) {
         return <div>Loading history...</div>;

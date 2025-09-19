@@ -5,23 +5,23 @@ const SearchBar = ({ onSearchComplete, onError }) => {
     const [damName, setDamName] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleSearch = async (e) => {
-        e.preventDefault(); // Prevent form from reloading the page
-        if (!damName) return;
+const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!damName) return;
 
-        setLoading(true);
-        onError(null); // Clear previous errors
-        try {
-            // Make a POST request to your backend's search endpoint
-            const response = await axios.post('http://localhost:5000/api/search', { damName });
-            onSearchComplete(response.data); // Pass the results up to the App component
-        } catch (error) {
-            console.error("Search failed:", error);
-            onError(error.response?.data?.error || "An unknown error occurred.");
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    onError(null);
+    try {
+        // UPDATED: Use environment variable for the API URL
+        const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/search`, { damName });
+        onSearchComplete(response.data);
+    } catch (error) {
+        console.error("Search failed:", error);
+        onError(error.response?.data?.error || "An unknown error occurred.");
+    } finally {
+        setLoading(false);
+    }
+};
 
     return (
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
