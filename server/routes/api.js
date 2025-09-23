@@ -4,7 +4,6 @@ const axios = require('axios');
 const ee = require('@google/earthengine');
 const { createClient } = require('@supabase/supabase-js');
 
-const privateKey = require('../private-key.json');
 let geeInitialized = false;
 
 // Authenticate and initialize Google Earth Engine
