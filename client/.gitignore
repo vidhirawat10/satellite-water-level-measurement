@@ -34,3 +34,11 @@ yarn-error.log*
 
 # Build folders
 /client/build
+
+# Ignore secrets and environment files
+.env
+server/private-key.json
+
+# Secrets
+server/private-key.json
+*.env

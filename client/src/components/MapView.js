@@ -1,50 +1,69 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-// zoom in - zoom out
-const ChangeView = ({ center, zoom }) => {
-    const map = useMap();
-    map.setView(center, zoom);
-    return null;
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
+  iconUrl: require('leaflet/dist/images/marker-icon.png'),
+  shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
+});
+const MapUpdater = ({ polygon }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (polygon && polygon.coordinates) {
+      try {
+        const geoJsonLayer = L.geoJSON(polygon);
+        const bounds = geoJsonLayer.getBounds();
+
+        if (bounds.isValid()) {
+          map.flyToBounds(bounds, { padding: [50, 50] });
+        }
+      } catch (e) {
+        console.error("Could not fit map to polygon bounds:", e);
+      }
+    }
+  }, [polygon, map]); 
+
+  return null; 
 };
 
+
 const MapView = ({ searchData }) => {
-    //  default map view
-    const defaultPosition = [20.5937, 78.9629]; 
+  const defaultPosition = [20.5937, 78.9629];
+  const defaultZoom = 5;
 
-    if (!searchData) {
-        return (
-            <div className="map-placeholder">
-                <p>🗺️ The map will appear here once you search for a location.</p>
-                <MapContainer center={defaultPosition} zoom={5} style={{ height: '500px', width: '100%', borderRadius: '8px' }}>
-                    <TileLayer
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    />
-                </MapContainer>
-            </div>
-        );
-    }
+  const tileUrl = searchData?.tileUrl;
+  const waterPolygon = searchData?.waterPolygon;
 
-    const { coords, tileUrl, waterPolygon } = searchData;
-    const position = [coords.lat, coords.lon];
+  return (
+    <MapContainer
+      center={defaultPosition}
+      zoom={defaultZoom}
+      style={{ height: '500px', width: '100%', borderRadius: '8px' }}
+      scrollWheelZoom={true}
+    >
+      {/* --- Layers --- */}
+      <TileLayer
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      />
+      {tileUrl && <TileLayer url={tileUrl} tms={false} />}
+      {waterPolygon?.coordinates && (
+        <GeoJSON
+          key={JSON.stringify(waterPolygon)}
+          data={waterPolygon}
+          style={{ color: '#00BFFF', weight: 2, fillOpacity: 0.5 }}
+        />
+      )}
 
-    return (
-        <MapContainer center={position} zoom={13} style={{ height: '500px', width: '100%', borderRadius: '8px' }}>
-            <ChangeView center={position} zoom={13} />
-            {/* Base map layer */}
-            <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            />
-            {/* GEE Satellite Image Overlay */}
-            {tileUrl && <TileLayer url={tileUrl} tms={false} />}
-
-            {/* Water Body Polygon from GEE */}
-            {waterPolygon && <GeoJSON data={waterPolygon} style={{ color: '#00BFFF', weight: 2, fillOpacity: 0.5 }} />}
-        </MapContainer>
-    );
+      {/* --- Controller --- */}
+      {/* This component will handle the auto-zooming */}
+      <MapUpdater polygon={waterPolygon} />
+    </MapContainer>
+  );
 };
 
 export default MapView;
