@@ -2,7 +2,7 @@ import React from 'react';
 import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// This is a helper component to programmatically update the map's view
+// zoom in - zoom out
 const ChangeView = ({ center, zoom }) => {
     const map = useMap();
     map.setView(center, zoom);
@@ -10,8 +10,8 @@ const ChangeView = ({ center, zoom }) => {
 };
 
 const MapView = ({ searchData }) => {
-    // Set a default position for the initial map view
-    const defaultPosition = [20.5937, 78.9629]; // Center of India
+    //  default map view
+    const defaultPosition = [20.5937, 78.9629]; 
 
     if (!searchData) {
         return (

@@ -12,7 +12,6 @@ const handleSearch = async (e) => {
     setLoading(true);
     onError(null);
     try {
-        // UPDATED: Use environment variable for the API URL
         const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/search`, { damName });
         onSearchComplete(response.data);
     } catch (error) {

@@ -80,7 +80,6 @@ header {
     text-align: center;
 }
 
-/* Add to the bottom of client/src/App.css */
 
 main {
     display: grid;
@@ -126,8 +125,6 @@ main {
 }
 
 
-
-/* Adjust main layout for responsiveness */
 @media (max-width: 1100px) {
     main {
         grid-template-columns: 1fr;
@@ -137,7 +134,6 @@ main {
     }
 }
 
-/* Responsive layout for smaller screens */
 @media (max-width: 900px) {
     .content-layout {
         grid-template-columns: 1fr;

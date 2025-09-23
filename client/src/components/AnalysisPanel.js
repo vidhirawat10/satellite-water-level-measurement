@@ -14,7 +14,6 @@ const AnalysisPanel = ({ waterPolygon }) => {
                 setError(null);
                 setAnalysis(null);
                 try {
-                    // Make the API call with a longer timeout
 const res = await axios.post(
     `${process.env.REACT_APP_API_URL}/api/analyze`,
     { waterPolygon }, 
@@ -33,7 +32,6 @@ const res = await axios.post(
                     };
                     setAnalysis(formattedData);
                 } catch (err) {
-                    // This will now print the detailed error (like 'timeout exceeded') in your browser's console
                     console.error("Analysis API call failed:", err); 
                     setError("Failed to analyze water levels.");
                 } finally {
@@ -48,7 +46,7 @@ const res = await axios.post(
     if (error) return <div className="panel-placeholder error">{error}</div>;
     if (!analysis) return <div className="panel-placeholder">Analysis results will be shown here.</div>;
 
-    // Prepare data for the Min/Mean/Max chart
+    //  Min/Mean/Max chart
     const chartData = [
         { name: 'Min', elevation: parseFloat(analysis.summaryStats.min.toFixed(2)) },
         { name: 'Mean', elevation: parseFloat(analysis.summaryStats.mean.toFixed(2)) },

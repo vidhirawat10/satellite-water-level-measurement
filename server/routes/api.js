@@ -24,7 +24,7 @@ const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================================
-// ROUTE 1: /api/search (FINAL VERSION)
+// ROUTE 1: /api/search (FINAL REFINED VERSION)
 // ==========================================================
 router.post('/search', async (req, res) => {
     console.log('\n--- Received new request on /api/search ---');
@@ -37,8 +37,8 @@ router.post('/search', async (req, res) => {
     console.log(`Searching for dam: "${damName}"`);
 
     try {
-        // Using country + proximity for a flexible nationwide search in India
-        const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(damName)}.json?country=IN&proximity=78.9629,20.5937&access_token=${process.env.MAPBOX_API_KEY}`;
+        // === FIX: Added &types=poi and &limit=1 to improve search accuracy ===
+        const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(damName)}.json?country=IN&proximity=78.9629,20.5937&types=poi&limit=1&access_token=${process.env.MAPBOX_API_KEY}`;
         
         const geoResponse = await axios.get(geocodeUrl);
         if (!geoResponse.data.features || geoResponse.data.features.length === 0) {
@@ -98,6 +98,7 @@ router.post('/search', async (req, res) => {
         res.status(500).json({ error: 'An unexpected error occurred on the server.' });
     }
 });
+
 
 // ==========================================================
 // ROUTE 2: /api/analyze (WITH LOGGING)

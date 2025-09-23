@@ -8,7 +8,6 @@ const Dashboard = () => {
 useEffect(() => {
     const fetchHistory = async () => {
         try {
-            // UPDATED: Use environment variable for the API URL
             const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/history`);
             setHistory(response.data);
         } catch (error) {
@@ -18,7 +17,7 @@ useEffect(() => {
         }
     };
     fetchHistory();
-}, []); // Empty array means this runs once when the component mounts
+}, []); 
 
     if (loading) {
         return <div>Loading history...</div>;

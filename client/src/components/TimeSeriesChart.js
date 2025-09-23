@@ -10,7 +10,6 @@ useEffect(() => {
     const fetchTimeSeries = async () => {
         setLoading(true);
         try {
-            // UPDATED: Use environment variable for the API URL
             const res = await axios.post(
                 `${process.env.REACT_APP_API_URL}/api/timeseries`,
                 { waterPolygon }
