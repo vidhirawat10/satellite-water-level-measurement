@@ -4,31 +4,17 @@ const axios = require('axios');
 const ee = require('@google/earthengine');
 const { createClient } = require('@supabase/supabase-js');
 
-let geeInitialized = false;
-
-// Authenticate and initialize Google Earth Engine
-const initializeGEE = () => {
-    ee.data.authenticateViaPrivateKey(privateKey, () => {
-        ee.initialize(null, null, () => {
-            geeInitialized = true;
-            console.log('GEE Initialized Successfully.');
-        }, (err) => { console.error('GEE Initialization Error:', err); });
-    }, (err) => { console.error('GEE Authentication Error:', err); });
-};
-initializeGEE();
-
 // Initialize Supabase client
+// This is fine here, as it reads from environment variables.
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-// ROUTE 1: /api/search (Uses OpenCage Geocoder)
+// ROUTE 1: /api/search
 router.post('/search', async (req, res) => {
     console.log('\n--- Received new request on /api/search ---');
-    if (!geeInitialized) {
-        return res.status(503).json({ error: 'GEE is not initialized.' });
-    }
+    // The 'geeInitialized' check is removed. If the server is running, we assume GEE is ready.
     
     const { damName } = req.body;
     console.log(`Searching for dam: "${damName}"`);
@@ -51,7 +37,6 @@ router.post('/search', async (req, res) => {
         const point = ee.Geometry.Point([lng, lat]);
         const analysisArea = point.buffer(20000); // 20km buffer
 
-        // --- GEE Image Processing (No changes here) ---
         const maskS2clouds = (image) => {
             const scl = image.select('SCL');
             const mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9));
@@ -80,9 +65,6 @@ router.post('/search', async (req, res) => {
             .first();
         console.log('Step 4: Identified the largest potential water polygon.');
 
-        // --- START: ASYNCHRONOUS EVALUATION WITH PROMISES ---
-
-        // Promise to get the map tile URL
         const getMapIdPromise = new Promise((resolve, reject) => {
             const visParams = { bands: ['B4', 'B3', 'B2'], min: 0, max: 0.3 };
             compositeImage.getMap(visParams, (mapIdObject, error) => {
@@ -93,13 +75,10 @@ router.post('/search', async (req, res) => {
             });
         });
 
-        // Promise to get the polygon geometry
         const getGeometryPromise = new Promise((resolve, reject) => {
-            // Use an ee.Algorithms.If to handle cases where no polygon is found
             const feature = ee.Algorithms.If(
                 largestPolygonFeature,
                 largestPolygonFeature,
-                // Create a placeholder if no feature exists to avoid errors
                 ee.Feature(null, {'no_polygon_found': true}) 
             );
 
@@ -136,10 +115,7 @@ router.post('/search', async (req, res) => {
 // ROUTE 2: /api/analyze 
 router.post('/analyze', (req, res) => {
     console.log('\n--- Received new request on /api/analyze ---');
-    if (!geeInitialized) {
-        console.error('Analyze failed: GEE not initialized.');
-        return res.status(503).json({ error: 'GEE is not initialized.' });
-    }
+    
     try {
         const { waterPolygon } = req.body;
         console.log('Step 6: Received polygon for analysis.');
@@ -199,13 +175,10 @@ router.post('/analyze', (req, res) => {
 });
 
 
-// ROUTE: /api/timeseries
+// ROUTE 3: /api/timeseries
 router.post('/timeseries', (req, res) => {
     console.log('\n--- Received new request on /api/timeseries ---');
-    if (!geeInitialized) {
-        return res.status(503).json({ error: 'GEE is not initialized.' });
-    }
-
+    
     const { waterPolygon, startDate, endDate } = req.body;
     if (!waterPolygon || !startDate || !endDate) {
         return res.status(400).json({ error: 'Missing required parameters.' });
