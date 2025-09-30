@@ -4,252 +4,162 @@ const axios = require('axios');
 const ee = require('@google/earthengine');
 const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-// This is fine here, as it reads from environment variables.
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+module.exports = (io) => {
+    io.on('connection', (socket) => {
+        // --- NEW DEBUGGING LOGS ---
+        console.log(`✅ [SERVER LOG] A user connected with socket ID: ${socket.id}`);
+        console.log(`[SERVER LOG] Now listening for a 'start-analysis' event from this user.`);
 
-// ROUTE 1: /api/search
-router.post('/search', async (req, res) => {
-    console.log('\n--- Received new request on /api/search ---');
-    // The 'geeInitialized' check is removed. If the server is running, we assume GEE is ready.
-    
-    const { damName } = req.body;
-    console.log(`Searching for dam: "${damName}"`);
-
-    try {
-        const query = `${damName}, India`;
-        const geocodeUrl = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(query)}&key=${process.env.OPENCAGE_API_KEY}&limit=1&countrycode=in`;
-        
-        console.log("Requesting URL:", geocodeUrl);
-        const geoResponse = await axios.get(geocodeUrl);
-
-        if (!geoResponse.data.results || geoResponse.data.results.length === 0) {
-            console.error('Geocoding failed: Location not found via OpenCage.');
-            return res.status(404).json({ error: 'Could not find the location in India.' });
-        }
-
-        const { lng, lat } = geoResponse.data.results[0].geometry;
-        console.log(`Step 1: Geocoded successfully to [Lon: ${lng}, Lat: ${lat}]`);
-        
-        const point = ee.Geometry.Point([lng, lat]);
-        const analysisArea = point.buffer(20000); // 20km buffer
-
-        const maskS2clouds = (image) => {
-            const scl = image.select('SCL');
-            const mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9));
-            return image.updateMask(mask).divide(10000);
-        };
-
-        const imageCollection = ee.ImageCollection('COPERNICUS/S2_SR')
-            .filterDate(new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10))
-            .filterBounds(analysisArea)
-            .map(maskS2clouds);
-        
-        const compositeImage = imageCollection.median();
-        console.log('Step 2: Created a clean composite satellite image.');
-        
-        const ndwi = compositeImage.normalizedDifference(['B3', 'B8']);
-        const waterMask = ndwi.gt(0);
-        console.log('Step 3: Calculated NDWI and created water mask.');
-
-        const allWaterVectors = waterMask.selfMask().reduceToVectors({
-            geometry: analysisArea, scale: 90, maxPixels: 1e9
-        });
-        
-        const largestPolygonFeature = allWaterVectors
-            .map(f => f.set('area', f.geometry().area(1)))
-            .sort('area', false)
-            .first();
-        console.log('Step 4: Identified the largest potential water polygon.');
-
-        const getMapIdPromise = new Promise((resolve, reject) => {
-            const visParams = { bands: ['B4', 'B3', 'B2'], min: 0, max: 0.3 };
-            compositeImage.getMap(visParams, (mapIdObject, error) => {
-                if (error) {
-                    return reject(new Error(`GEE getMapId Error: ${error}`));
-                }
-                resolve(mapIdObject);
-            });
-        });
-
-        const getGeometryPromise = new Promise((resolve, reject) => {
-            const feature = ee.Algorithms.If(
-                largestPolygonFeature,
-                largestPolygonFeature,
-                ee.Feature(null, {'no_polygon_found': true}) 
-            );
-
-            feature.evaluate((evaluatedFeature, error) => {
-                if (error) {
-                    return reject(new Error(`GEE Geometry Evaluation Error: ${error}`));
-                }
-                if (evaluatedFeature.properties.no_polygon_found || !evaluatedFeature.geometry) {
-                    return reject(new Error('Could not find a distinct water body at this location.'));
-                }
-                resolve(evaluatedFeature.geometry);
-            });
-        });
-
-        const [mapId, geometry] = await Promise.all([getMapIdPromise, getGeometryPromise]);
-
-        console.log('Step 5: Successfully extracted polygon and mapId. Sending to client.');
-        
-        await supabase.from('searches').insert([{ dam_name: damName, lat: lat, lon: lng }]);
-        
-        res.json({
-            coords: { lat, lon: lng },
-            tileUrl: mapId.urlFormat, 
-            waterPolygon: geometry
-        });
-
-    } catch (error) {
-        console.error("CRITICAL CRASH in /search route:", error.message);
-        res.status(500).json({ error: error.message || 'An unexpected error occurred on the server.' });
-    }
-});
-
-
-// ROUTE 2: /api/analyze 
-router.post('/analyze', (req, res) => {
-    console.log('\n--- Received new request on /api/analyze ---');
-    
-    try {
-        const { waterPolygon } = req.body;
-        console.log('Step 6: Received polygon for analysis.');
-        const geometry = ee.Geometry(waterPolygon, null, false);
-        const dem = ee.Image('USGS/SRTMGL1_003');
-
-        const robustReducer = ee.Reducer.minMax().combine(ee.Reducer.mean(), '', true).combine(ee.Reducer.percentile([10]), '', true);
-
-        const elevationMetrics = dem.reduceRegion({
-            reducer: robustReducer,
-            geometry: geometry, scale: 30, maxPixels: 1e9
-        });
-
-        elevationMetrics.evaluate((metrics, error) => {
-            if (error) {
-                console.error('GEE ERROR during elevation analysis:', error);
-                return res.status(500).json({ error: 'Failed to analyze elevation.' });
-            }
-            if (!metrics || (metrics.elevation_mean === null)) {
-                console.error('CRITICAL FAILURE: Could not calculate elevation. Metrics were null.', metrics);
-                return res.status(500).json({ error: 'Could not determine surface elevation.' });
-            }
-            console.log('Step 7: Calculated elevation metrics:', metrics);
+        socket.on('start-analysis', async (data) => {
+            // --- NEW DEBUGGING LOG ---
+            console.log(`[SERVER LOG] Received 'start-analysis' event! Starting process.`);
             
-            const summaryStats = { min: metrics.elevation_min, mean: metrics.elevation_mean, max: metrics.elevation_max };
-            
-            const surfaceHeight = metrics.elevation_p10; 
-            const depthLevels = ee.List([0, -2, -5, -10, -15, -20]);
+            const { damName } = data;
+            console.log(`\n--- [Socket ${socket.id}] analysis for: "${damName}" ---`);
 
-            const areaCalculations = depthLevels.map((depth) => {
-                const absoluteElevation = ee.Number(surfaceHeight).add(depth);
-                const waterAtLevel = dem.lte(absoluteElevation).selfMask().clip(geometry);
+            try {
+                const evaluatePromise = (eeObject) => {
+                    return new Promise((resolve, reject) => {
+                        eeObject.evaluate((result, error) => {
+                            if (error) reject(new Error(error));
+                            else resolve(result);
+                        });
+                    });
+                };
+
+                // STEP 1: Geocoding
+                socket.emit('analysis-update', { message: `Geocoding location for "${damName}"...` });
+                const query = `${damName}, India`;
+                const geocodeUrl = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(query)}&key=${process.env.OPENCAGE_API_KEY}&limit=1&countrycode=in`;
+                const geoResponse = await axios.get(geocodeUrl);
+
+                if (!geoResponse.data.results || geoResponse.data.results.length === 0) {
+                    throw new Error('Could not find the location in India via OpenCage.');
+                }
+                const { lng, lat } = geoResponse.data.results[0].geometry;
+                console.log(`[Socket ${socket.id}] Step 1: Geocoded to [Lon: ${lng}, Lat: ${lat}]`);
+
+
+                // STEP 2: Find Water Polygon
+                socket.emit('analysis-update', { message: 'Requesting and processing satellite imagery...' });
+                const point = ee.Geometry.Point([lng, lat]);
+                const analysisArea = point.buffer(20000);
+
+                const maskS2clouds = (image) => {
+                    const scl = image.select('SCL');
+                    const mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9));
+                    return image.updateMask(mask).divide(10000);
+                };
+
+                const imageCollection = ee.ImageCollection('COPERNICUS/S2_SR')
+                    .filterDate(new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10))
+                    .filterBounds(analysisArea)
+                    .map(maskS2clouds);
+
+                const compositeImage = imageCollection.median();
+                const ndwi = compositeImage.normalizedDifference(['B3', 'B8']);
+                const waterMask = ndwi.gt(0);
+                const allWaterVectors = waterMask.selfMask().reduceToVectors({ geometry: analysisArea, scale: 90, maxPixels: 1e9 });
+                const largestPolygonFeature = allWaterVectors.map(f => f.set('area', f.geometry().area(1))).sort('area', false).first();
+                console.log(`[Socket ${socket.id}] Step 2: Identified largest water polygon.`);
+
+                const geometry = await evaluatePromise(largestPolygonFeature.geometry());
+                if (!geometry) {
+                    throw new Error('Could not find a distinct water body at this location.');
+                }
+                console.log(`[Socket ${socket.id}] Step 3: Successfully extracted polygon geometry.`);
                 
-                const area = waterAtLevel.multiply(ee.Image.pixelArea()).reduceRegion({
-                    reducer: ee.Reducer.sum(),
-                    geometry: geometry,
-                    scale: 30,
-                    maxPixels: 1e9
-                }).get('elevation');
 
-                return ee.Dictionary({ 'depth': depth, 'area_sqm': area, 'elevation': absoluteElevation });
-            });
-
-            areaCalculations.evaluate((tieredResults, err) => {
-                if (err) {
-                    console.error('GEE ERROR during tiered area calculation:', err);
-                    return res.status(500).json({ error: 'Failed to analyze area at levels.' });
+                // STEP 3: Analyze Elevation & Depth
+                socket.emit('analysis-update', { message: 'Analyzing surface elevation and depth...' });
+                const eeGeometry = ee.Geometry(geometry, null, false);
+                const dem = ee.Image('USGS/SRTMGL1_003');
+                const robustReducer = ee.Reducer.minMax().combine(ee.Reducer.mean(), '', true).combine(ee.Reducer.percentile([10]), '', true);
+                const elevationMetrics = await evaluatePromise(dem.reduceRegion({ reducer: robustReducer, geometry: eeGeometry, scale: 30, maxPixels: 1e9 }));
+                
+                if (!elevationMetrics || elevationMetrics.elevation_mean === null) {
+                    throw new Error('Could not determine surface elevation from DEM.');
                 }
-                console.log('Step 8: Calculated tiered results. Sending to client.');
-                res.json({ analysis: { summaryStats, tieredResults } });
-            });
-        });
-    } catch (error) {
-        console.error("CRITICAL CRASH in /analyze route:", error);
-        res.status(500).json({ error: 'An error occurred during analysis.' });
-    }
-});
+                const summaryStats = { min: elevationMetrics.elevation_min, mean: elevationMetrics.elevation_mean, max: elevationMetrics.elevation_max };
+                const surfaceHeight = elevationMetrics.elevation_p10;
+                const depthLevels = ee.List([0, -2, -5, -10, -15, -20]);
+                const areaCalculations = depthLevels.map((depth) => {
+                    const absoluteElevation = ee.Number(surfaceHeight).add(depth);
+                    const waterAtLevel = dem.lte(absoluteElevation).selfMask().clip(eeGeometry);
+                    const area = waterAtLevel.multiply(ee.Image.pixelArea()).reduceRegion({ reducer: ee.Reducer.sum(), geometry: eeGeometry, scale: 30, maxPixels: 1e9 }).get('elevation');
+                    return ee.Dictionary({ 'depth': depth, 'area_sqm': area, 'elevation': absoluteElevation });
+                });
+                const tieredResults = await evaluatePromise(areaCalculations);
+                console.log(`[Socket ${socket.id}] Step 4: Calculated elevation metrics.`);
 
 
-// ROUTE 3: /api/timeseries
-router.post('/timeseries', (req, res) => {
-    console.log('\n--- Received new request on /api/timeseries ---');
-    
-    const { waterPolygon, startDate, endDate } = req.body;
-    if (!waterPolygon || !startDate || !endDate) {
-        return res.status(400).json({ error: 'Missing required parameters.' });
-    }
-    
-    try {
-        const aoi = ee.Geometry(waterPolygon, null, false);
-        const dem = ee.Image('USGS/SRTMGL1_003');
-        
-        const imageCollection = ee.ImageCollection('COPERNICUS/S2_SR')
-            .filterBounds(aoi)
-            .filterDate(ee.Date(startDate), ee.Date(endDate));
+                // STEP 4: Get Time Series Data
+                socket.emit('analysis-update', { message: 'Compiling historical water levels...' });
+                const endDate = new Date();
+                const startDate = new Date(new Date().setFullYear(endDate.getFullYear() - 5));
+                
+                const tsImageCollection = ee.ImageCollection('COPERNICUS/S2_SR').filterBounds(eeGeometry).filterDate(ee.Date(startDate), ee.Date(endDate));
+                const calculateWaterLevel = (image) => {
+                    const scl = image.select('SCL');
+                    const mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9));
+                    const ndwi = image.normalizedDifference(['B3', 'B8']).updateMask(mask);
+                    const waterMask = ndwi.gt(0);
+                    const waterElevation = dem.updateMask(waterMask).reduceRegion({ reducer: ee.Reducer.percentile([10]), geometry: eeGeometry, scale: 30, maxPixels: 1e9 }).get('elevation');
+                    return image.set({ 'waterLevel': waterElevation, 'date': image.date().format('YYYY-MM-dd') });
+                };
+                const timeSeries = tsImageCollection.map(calculateWaterLevel);
+                const filteredTimeSeries = await evaluatePromise(timeSeries.filter(ee.Filter.notNull(['waterLevel'])));
 
-        const calculateWaterLevel = function(image) {
-            const scl = image.select('SCL');
-            const mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9));
+                const cleanData = filteredTimeSeries.features
+                    .map(f => ({
+                        date: f.properties.date,
+                        waterLevel: f.properties.waterLevel ? parseFloat(f.properties.waterLevel.toFixed(2)) : null
+                    }))
+                    .filter(item => item.waterLevel !== null)
+                    .sort((a, b) => new Date(a.date) - new Date(b.date));
+                console.log(`[Socket ${socket.id}] Step 5: Time-series complete. Found ${cleanData.length} points.`);
 
-            const ndwi = image.normalizedDifference(['B3', 'B8']).updateMask(mask);
-            const waterMask = ndwi.gt(0);
 
-            const robustReducer = ee.Reducer.percentile([10]);
-            
-            const waterElevation = dem.updateMask(waterMask).reduceRegion({
-                reducer: robustReducer,
-                geometry: aoi,
-                scale: 30,
-                maxPixels: 1e9
-            }).get('elevation');
+                // FINAL STEP: Send complete payload and save to DB
+                socket.emit('analysis-update', { message: 'Finalizing results...' });
 
-            return image.set({
-                'waterLevel': waterElevation,
-                'date': image.date().format('YYYY-MM-dd')
-            });
-        };
+                const finalPayload = {
+                    coords: { lat, lon: lng },
+                    waterPolygon: geometry,
+                    analysis: { summaryStats, tieredResults },
+                    timeSeriesData: cleanData
+                };
 
-        const timeSeries = imageCollection.map(calculateWaterLevel);
-        const filteredTimeSeries = timeSeries.filter(ee.Filter.notNull(['waterLevel']));
+                await supabase.from('searches').insert([{ dam_name: damName, lat: lat, lon: lng }]);
+                console.log(`[Socket ${socket.id}] Analysis complete. Sending 'analysis-complete' event.`);
 
-        filteredTimeSeries.evaluate((result, error) => {
-            if (error) {
-                console.error('GEE ERROR during time-series analysis:', error);
-                return res.status(500).json({ error: 'Failed to perform time-series analysis.' });
+                socket.emit('analysis-complete', { results: finalPayload });
+
+            } catch (error) {
+                console.error(`[Socket ${socket.id}] CRITICAL ERROR during analysis:`, error.message);
+                socket.emit('analysis-error', { message: error.message || 'An unexpected error occurred.' });
             }
-            
-            const cleanData = result.features.map(f => ({
-                date: f.properties.date,
-                waterLevel: parseFloat(f.properties.waterLevel.toFixed(2))
-            }));
-            
-            cleanData.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            console.log(`Time-series analysis complete. Found ${cleanData.length} data points.`);
-            res.json({ timeSeriesData: cleanData });
         });
 
-    } catch (error) {
-        console.error("CRITICAL CRASH in /timeseries route:", error);
-        res.status(500).json({ error: 'An error occurred during time-series analysis.' });
-    }
-});
+        socket.on('disconnect', () => {
+            console.log(`❌ [SERVER LOG] User disconnected: ${socket.id}`);
+        });
+    });
 
+    // --- Regular HTTP Routes ---
+    router.get('/history', async (req, res) => {
+        try {
+            const { data, error } = await supabase.from('searches').select('*').order('created_at', { ascending: false }).limit(10);
+            if (error) throw error;
+            res.json(data);
+        } catch (error) {
+            res.status(500).json({ error: 'Could not fetch search history.' });
+        }
+    });
 
-// ROUTE 4: /api/history
-router.get('/history', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('searches').select('*').order('created_at', { ascending: false }).limit(10);
-        if (error) throw error;
-        res.json(data);
-    } catch (error) {
-        res.status(500).json({ error: 'Could not fetch search history.' });
-    }
-});
-
-module.exports = router;
+    return router;
+};

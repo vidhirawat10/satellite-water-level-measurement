@@ -1,87 +1,103 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React from 'react';
 import { 
     BarChart, Bar, XAxis, YAxis, 
     Tooltip, Legend, CartesianGrid, ResponsiveContainer 
 } from 'recharts';
 
-const AnalysisPanel = ({ waterPolygon, timeSeriesData }) => {
-    const [analysis, setAnalysis] = useState(null);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+// A small helper component to show changes with colored arrows
+const ChangeIndicator = ({ change }) => {
+    if (change === null || isNaN(change)) {
+        return <span>-</span>;
+    }
+    const isPositive = change > 0;
+    const color = isPositive ? 'green' : 'red';
+    const arrow = isPositive ? '▲' : '▼';
 
-    useEffect(() => {
-        if (waterPolygon) {
-            const fetchAnalysis = async () => {
-                setLoading(true);
-                setError(null);
-                setAnalysis(null);
-                try {
-                    const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/analyze`, { waterPolygon }, { timeout: 60000 });
-                    const sortedTiers = res.data.analysis.tieredResults.sort((a, b) => b.elevation - a.elevation);
-                    const formattedData = {
-                        summaryStats: res.data.analysis.summaryStats,
-                        tieredResults: sortedTiers.map(item => ({
-                            levelLabel: `Surface ${item.depth}m`,
-                            area_sqm: item.area_sqm ? parseFloat(item.area_sqm.toFixed(0)) : 0,
-                            elevation: item.elevation ? parseFloat(item.elevation.toFixed(2)) : 0
-                        }))
-                    };
-                    setAnalysis(formattedData);
-                } catch (err) {
-                    console.error("Analysis API call failed:", err);
-                    setError("Failed to analyze water levels.");
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchAnalysis();
-        }
-    }, [waterPolygon]);
+    return (
+        <span style={{ color, fontWeight: 'bold' }}>
+            {change.toFixed(2)}m {arrow}
+        </span>
+    );
+};
 
-    if (loading) return <div className="panel-placeholder">Analyzing... 🔬</div>;
-    if (error) return <div className="panel-placeholder error">{error}</div>;
-    if (!analysis) return <div className="panel-placeholder">Analysis results will be shown here.</div>;
 
-    const chartData = [
-        { name: 'Min', elevation: parseFloat(analysis.summaryStats.min.toFixed(2)) },
-        { name: 'Mean', elevation: parseFloat(analysis.summaryStats.mean.toFixed(2)) },
-        { name: 'Max', elevation: parseFloat(analysis.summaryStats.max.toFixed(2)) },
+const AnalysisPanel = ({ analysisData, timeSeriesData }) => {
+    // If there's no data yet, show a placeholder
+    if (!analysisData || !timeSeriesData) {
+        return (
+            <div className="analysis-panel card">
+                <h3>📊 Analysis Dashboard</h3>
+                <p className="panel-placeholder">Analysis results will be shown here after a search.</p>
+            </div>
+        );
+    }
+    
+    // Prepare data for the Elevation Profile chart
+    const elevationChartData = [
+        { name: 'Min', Elevation: analysisData.summaryStats.min.toFixed(2) },
+        { name: 'Mean', Elevation: analysisData.summaryStats.mean.toFixed(2) },
+        { name: 'Max', Elevation: analysisData.summaryStats.max.toFixed(2) },
     ];
+
+    // Prepare data for the Recent Readings table
+    const recentReadings = timeSeriesData.slice(-5).reverse(); // Get the last 5 readings
+    const readingsWithChange = recentReadings.map((reading, index) => {
+        let change = null;
+        // Compare with the next reading in the reversed array (which is the previous day chronologically)
+        if (index < recentReadings.length - 1) {
+            const previousReading = recentReadings[index + 1];
+            change = reading.waterLevel - previousReading.waterLevel;
+        }
+        return { ...reading, change };
+    });
 
     return (
         <div className="analysis-panel card">
-            <h3>📊 Elevation Profile</h3>
-            <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis label={{ value: 'Elevation (m)', angle: -90, position: 'insideLeft' }} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="elevation" fill="#8884d8" name="Elevation (m)" />
-                </BarChart>
-            </ResponsiveContainer>
+            <h3>📊 Analysis Dashboard</h3>
 
-            <h3 style={{ marginTop: '30px' }}>💧 Water Levels</h3>
-            <table>
-                <thead><tr><th>Depth Level</th><th>Surface Area (m²)</th><th>Height Level (m)</th></tr></thead>
-                <tbody>
-                    {analysis.tieredResults.map((item) => (
-                        <tr key={item.levelLabel}>
-                            <td><strong>{item.levelLabel}</strong></td>
-                            <td>{item.area_sqm.toLocaleString()}</td>
-                            <td>{item.elevation}</td>
+            {/* Section 1: Elevation Profile */}
+            <div className="sub-panel">
+                <h4>Elevation Profile</h4>
+                <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={elevationChartData} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis label={{ value: 'Elevation (m)', angle: -90, position: 'insideLeft' }} />
+                        <Tooltip />
+                        <Legend />
+                        <Bar dataKey="Elevation" fill="#8884d8" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+            
+            {/* Section 2: Water Levels by Depth */}
+            <div className="sub-panel">
+                <h4>Water Levels</h4>
+                <table className="results-table">
+                    <thead>
+                        <tr>
+                            <th>Depth Level</th>
+                            <th>Surface Area (m²)</th>
+                            <th>Height Level (m)</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
-            <p className="note">Height Level is meters above sea level (SRTM DEM).</p>
+                    </thead>
+                    <tbody>
+                        {analysisData.tieredResults.map((row, index) => (
+                            <tr key={index}>
+                                <td>Surface {Math.abs(row.depth)}m</td>
+                                <td>{row.area_sqm ? row.area_sqm.toLocaleString(undefined, { maximumFractionDigits: 0 }) : 'N/A'}</td>
+                                <td>{row.elevation ? row.elevation.toFixed(2) : 'N/A'}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                <small>Height Level is meters above sea level (SRTM DEM).</small>
+            </div>
 
-            <hr />
-            <h3>💧 Recent Readings</h3>
-            {timeSeriesData && timeSeriesData.length > 0 ? (
-                <table>
+            {/* Section 3: Recent Readings */}
+            <div className="sub-panel">
+                <h4>Recent Readings</h4>
+                <table className="results-table">
                     <thead>
                         <tr>
                             <th>Date</th>
@@ -90,28 +106,17 @@ const AnalysisPanel = ({ waterPolygon, timeSeriesData }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {timeSeriesData.slice(-5).reverse().map((item, index) => {
-                            let change = 'N/A';
-                            const originalIndex = timeSeriesData.findIndex(d => d.date === item.date);
-                            if (originalIndex > 0) {
-                                const previousDay = timeSeriesData[originalIndex - 1];
-                                const diff = item.waterLevel - previousDay.waterLevel;
-                                const sign = diff >= 0 ? '▲' : '▼';
-                                change = `${diff.toFixed(2)}m ${sign}`;
-                            }
-                            return (
-                                <tr key={item.date}>
-                                    <td><strong>{item.date}</strong></td>
-                                    <td>{item.waterLevel} m</td>
-                                    <td style={{ color: change.includes('▲') ? 'green' : 'red' }}>{change}</td>
-                                </tr>
-                            );
-                        })}
+                        {readingsWithChange.map((reading) => (
+                            <tr key={reading.date}>
+                                <td>{new Date(reading.date).toLocaleDateString()}</td>
+                                <td>{reading.waterLevel.toFixed(2)}</td>
+                                <td><ChangeIndicator change={reading.change} /></td>
+                            </tr>
+                        ))}
                     </tbody>
                 </table>
-            ) : (
-                <p className="note">No recent readings to display. Analyze a time period to see results here.</p>
-            )}
+            </div>
+
         </div>
     );
 };
