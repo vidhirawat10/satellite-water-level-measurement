@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
+import { socket } from './socket'; // <-- IMPORT from the new socket.js file
 import SearchBar from './components/SearchBar';
 import MapView from './components/MapView';
 import AnalysisPanel from './components/AnalysisPanel';
@@ -9,15 +9,9 @@ import LoadingScreen from './components/LoadingScreen';
 import './App.css';
 import axios from 'axios';
 
-const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000', {
-    // This setting prevents it from connecting automatically on page load.
-    // We will connect manually inside useEffect.
-    autoConnect: false
-});
-
 function App() {
     const [isLoading, setIsLoading] = useState(false);
-    const [loadingMessage, setLoadingMessage] = useState('');
+    // REMOVED: The loadingMessage state is no longer needed here.
     const [analysisResults, setAnalysisResults] = useState(null);
     const [error, setError] = useState(null);
     const [history, setHistory] = useState([]);
@@ -32,57 +26,50 @@ function App() {
     };
 
     useEffect(() => {
-        // --- THIS IS THE KEY CHANGE ---
-        // We explicitly connect here.
+        // Explicitly connect the shared socket instance
         socket.connect();
         fetchHistory(); 
 
-        // Define the functions that will handle the events
-        function onAnalysisUpdate(data) {
-            setLoadingMessage(data.message);
-        }
-
+        // Listener for when the entire analysis is complete
         function onAnalysisComplete(data) {
             console.log("Analysis Complete. Received data:", data.results);
             setAnalysisResults(data.results);
             setIsLoading(false);
-            fetchHistory();
+            fetchHistory(); // Refresh history after a successful analysis
         }
 
+        // Listener for any errors during analysis
         function onAnalysisError(data) {
             console.error("Analysis Error:", data.message);
             setError(data.message);
             setIsLoading(false);
         }
 
-        // Attach the listeners
-        socket.on('analysis-update', onAnalysisUpdate);
+        // Attach the listeners this component cares about
         socket.on('analysis-complete', onAnalysisComplete);
         socket.on('analysis-error', onAnalysisError);
 
-        // This is the cleanup function that runs when the component is unmounted
+        // Cleanup function on component unmount
         return () => {
-            // Detach the listeners to prevent memory leaks
-            socket.off('analysis-update', onAnalysisUpdate);
             socket.off('analysis-complete', onAnalysisComplete);
             socket.off('analysis-error', onAnalysisError);
-            // We disconnect here, which is the proper place for the final cleanup.
             socket.disconnect();
         };
-    }, []); // The empty array ensures this effect runs only on mount and unmount
+    }, []); // Empty array ensures this runs only once on mount and unmount
 
     const handleSearch = (damName) => {
         setIsLoading(true);
         setAnalysisResults(null);
         setError(null);
-        setLoadingMessage('Initializing request...');
-        console.log(`[CLIENT LOG] Attempting to emit 'start-analysis' for "${damName}"`);
+        // REMOVED: No need to set the initial loading message here.
+        console.log(`[CLIENT LOG] Emitting 'start-analysis' for "${damName}"`);
         socket.emit('start-analysis', { damName });
     };
 
     return (
         <div className="App">
-            {isLoading && <LoadingScreen message={loadingMessage} />}
+            {/* UPDATED: LoadingScreen no longer needs any props */}
+            {isLoading && <LoadingScreen />}
             
             <header className="app-header">
                 <h1>Dam Water Level Analyzer 🌊</h1>
@@ -92,7 +79,6 @@ function App() {
             {error && <div className="error-message">{error}</div>}
             
             <main className="content-grid">
-                {/* Your component layout here... */}
                 <div className="left-column">
                     <div className="card">
                         <MapView searchData={analysisResults} />

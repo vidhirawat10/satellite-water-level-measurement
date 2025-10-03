@@ -1,3 +1,4 @@
+/* --- Base Modal Styles --- */
 .loading-overlay {
   position: fixed;
   top: 0;
@@ -16,28 +17,78 @@
 
 .loading-box {
   background-color: #282c34;
-  padding: 40px;
+  padding: 30px 40px;
   border-radius: 10px;
   box-shadow: 0 5px 15px rgba(0,0,0,0.5);
   width: 90%;
-  max-width: 400px;
+  max-width: 450px;
+}
+
+.loading-box h2 {
+    margin-bottom: 15px;
 }
 
 .loading-message {
-  margin-top: 20px;
-  font-size: 1.1em;
-  min-height: 30px; /* Prevents layout shift as text changes */
+  margin-bottom: 30px;
+  font-size: 1em;
+  min-height: 20px;
   color: #a0a0a0;
+  font-style: italic;
 }
 
-.spinner {
-  margin: 0 auto 20px auto;
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(255, 255, 255, 0.3);
+/* --- New Stepper Styles --- */
+.stepper-wrapper {
+    text-align: left;
+    margin-top: 20px;
+}
+
+.step-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 18px;
+    transition: all 0.3s ease;
+    color: #888; /* Pending state color */
+}
+
+.step-item.active {
+    color: #61dafb; /* Active state color */
+    font-weight: 600;
+}
+
+.step-item.completed {
+    color: #4CAF50; /* Completed state color */
+    font-weight: 600;
+}
+
+.step-name {
+    font-size: 1.1em;
+}
+
+/* --- Icon and Animation Styles --- */
+.step-icon {
+    width: 28px;
+    height: 28px;
+    margin-right: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+}
+
+.spinner-icon {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(97, 218, 251, 0.3);
   border-radius: 50%;
   border-top-color: #61dafb;
   animation: spin 1s ease-in-out infinite;
+}
+
+.dot-icon {
+    width: 8px;
+    height: 8px;
+    background-color: #555;
+    border-radius: 50%;
 }
 
 @keyframes spin {
