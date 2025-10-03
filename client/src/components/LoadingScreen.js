@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { socket } from '../socket';
-import './LoadingScreen.css'; // Make sure this import line is here and correct
+import './LoadingScreen.css';
 
 function LoadingScreen() {
     const [currentStage, setCurrentStage] = useState(0);
@@ -16,7 +16,18 @@ function LoadingScreen() {
 
     useEffect(() => {
         const handleAnalysisUpdate = (data) => {
-            setCurrentStage(data.stage);
+            console.log('--- SOCKET EVENT RECEIVED ---', data); // Log the raw data from backend
+
+            // --- POTENTIAL FIX: Ensure the stage is always an integer ---
+            // This prevents issues if the backend sends "1" instead of 1.
+            const stageAsNumber = parseInt(data.stage, 10);
+
+            if (isNaN(stageAsNumber)) {
+                console.error("Received a non-numeric stage from backend:", data.stage);
+                return;
+            }
+
+            setCurrentStage(stageAsNumber);
             setMessage(data.message);
         };
 
@@ -26,6 +37,10 @@ function LoadingScreen() {
             socket.off('analysis-update', handleAnalysisUpdate);
         };
     }, []);
+
+    // --- DEBUGGING LOG ---
+    // This log will run every time the component re-renders.
+    console.log(`--- COMPONENT RE-RENDER --- Current stage is: ${currentStage} (Type: ${typeof currentStage})`);
 
     return (
         <div className="loading-overlay">
@@ -42,6 +57,10 @@ function LoadingScreen() {
                         } else if (stepNumber === currentStage) {
                             status = 'active';
                         }
+
+                        // --- DEBUGGING LOG ---
+                        // This log shows the final status for each step.
+                        console.log(`Step ${stepNumber} ("${step}"): Status is "${status}"`);
 
                         return (
                             <div key={index} className={`step-item ${status}`}>

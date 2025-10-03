@@ -10,12 +10,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 module.exports = (io) => {
     io.on('connection', (socket) => {
-        // --- NEW DEBUGGING LOGS ---
         console.log(`✅ [SERVER LOG] A user connected with socket ID: ${socket.id}`);
         console.log(`[SERVER LOG] Now listening for a 'start-analysis' event from this user.`);
 
         socket.on('start-analysis', async (data) => {
-            // --- NEW DEBUGGING LOG ---
             console.log(`[SERVER LOG] Received 'start-analysis' event! Starting process.`);
             
             const { damName } = data;
@@ -31,8 +29,11 @@ module.exports = (io) => {
                     });
                 };
 
-                // STEP 1: Geocoding
-                socket.emit('analysis-update', { message: `Geocoding location for "${damName}"...` });
+                // --- STEP 1: Geocoding ---
+                socket.emit('analysis-update', { 
+                    stage: 1, 
+                    message: `Geocoding location for "${damName}"...` 
+                });
                 const query = `${damName}, India`;
                 const geocodeUrl = `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(query)}&key=${process.env.OPENCAGE_API_KEY}&limit=1&countrycode=in`;
                 const geoResponse = await axios.get(geocodeUrl);
@@ -44,8 +45,11 @@ module.exports = (io) => {
                 console.log(`[Socket ${socket.id}] Step 1: Geocoded to [Lon: ${lng}, Lat: ${lat}]`);
 
 
-                // STEP 2: Find Water Polygon
-                socket.emit('analysis-update', { message: 'Requesting and processing satellite imagery...' });
+                // --- STEP 2: Analyzing Satellite Imagery ---
+                socket.emit('analysis-update', { 
+                    stage: 2, 
+                    message: 'Analyzing satellite imagery...' 
+                });
                 const point = ee.Geometry.Point([lng, lat]);
                 const analysisArea = point.buffer(20000);
 
@@ -67,6 +71,12 @@ module.exports = (io) => {
                 const largestPolygonFeature = allWaterVectors.map(f => f.set('area', f.geometry().area(1))).sort('area', false).first();
                 console.log(`[Socket ${socket.id}] Step 2: Identified largest water polygon.`);
 
+
+                // --- STEP 3: Extracting Water Boundary ---
+                socket.emit('analysis-update', { 
+                    stage: 3, 
+                    message: 'Extracting precise water boundary...' 
+                });
                 const geometry = await evaluatePromise(largestPolygonFeature.geometry());
                 if (!geometry) {
                     throw new Error('Could not find a distinct water body at this location.');
@@ -74,8 +84,11 @@ module.exports = (io) => {
                 console.log(`[Socket ${socket.id}] Step 3: Successfully extracted polygon geometry.`);
                 
 
-                // STEP 3: Analyze Elevation & Depth
-                socket.emit('analysis-update', { message: 'Analyzing surface elevation and depth...' });
+                // --- STEP 4: Calculating Elevation Profile ---
+                socket.emit('analysis-update', { 
+                    stage: 4, 
+                    message: 'Calculating elevation profile...' 
+                });
                 const eeGeometry = ee.Geometry(geometry, null, false);
                 const dem = ee.Image('USGS/SRTMGL1_003');
                 const robustReducer = ee.Reducer.minMax().combine(ee.Reducer.mean(), '', true).combine(ee.Reducer.percentile([10]), '', true);
@@ -97,8 +110,11 @@ module.exports = (io) => {
                 console.log(`[Socket ${socket.id}] Step 4: Calculated elevation metrics.`);
 
 
-                // STEP 4: Get Time Series Data
-                socket.emit('analysis-update', { message: 'Compiling historical water levels...' });
+                // --- STEP 5: Compiling Historical Data ---
+                socket.emit('analysis-update', { 
+                    stage: 5, 
+                    message: 'Compiling historical water levels...' 
+                });
                 const endDate = new Date();
                 const startDate = new Date(new Date().setFullYear(endDate.getFullYear() - 5));
                 
@@ -124,9 +140,7 @@ module.exports = (io) => {
                 console.log(`[Socket ${socket.id}] Step 5: Time-series complete. Found ${cleanData.length} points.`);
 
 
-                // FINAL STEP: Send complete payload and save to DB
-                socket.emit('analysis-update', { message: 'Finalizing results...' });
-
+                // --- FINAL STEP: Send complete payload and save to DB ---
                 const finalPayload = {
                     coords: { lat, lon: lng },
                     waterPolygon: geometry,
