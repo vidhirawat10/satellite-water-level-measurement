@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { socket } from '../socket'; // <-- IMPORT the shared socket instance
-import './LoadingScreen.css';
+import { socket } from '../socket';
+import './LoadingScreen.css'; // Make sure this import line is here and correct
 
 function LoadingScreen() {
     const [currentStage, setCurrentStage] = useState(0);
@@ -46,8 +46,8 @@ function LoadingScreen() {
                         return (
                             <div key={index} className={`step-item ${status}`}>
                                 <div className="step-icon">
-                                    {status === 'completed' && '✔'}
-                                    {status === 'active' && <div className="spinner-icon"></div>}
+                                    {status === 'completed' && <span className="tick-icon">✔</span>}
+                                    {status === 'active' && <div className="buffering-circle"></div>}
                                     {status === 'pending' && <div className="dot-icon"></div>}
                                 </div>
                                 <div className="step-name">{step}</div>
