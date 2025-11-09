@@ -16,10 +16,8 @@ function LoadingScreen() {
 
     useEffect(() => {
         const handleAnalysisUpdate = (data) => {
-            console.log('--- SOCKET EVENT RECEIVED ---', data); // Log the raw data from backend
+            console.log('--- SOCKET EVENT RECEIVED ---', data);
 
-            // --- POTENTIAL FIX: Ensure the stage is always an integer ---
-            // This prevents issues if the backend sends "1" instead of 1.
             const stageAsNumber = parseInt(data.stage, 10);
 
             if (isNaN(stageAsNumber)) {
@@ -38,8 +36,6 @@ function LoadingScreen() {
         };
     }, []);
 
-    // --- DEBUGGING LOG ---
-    // This log will run every time the component re-renders.
     console.log(`--- COMPONENT RE-RENDER --- Current stage is: ${currentStage} (Type: ${typeof currentStage})`);
 
     return (
@@ -58,8 +54,6 @@ function LoadingScreen() {
                             status = 'active';
                         }
 
-                        // --- DEBUGGING LOG ---
-                        // This log shows the final status for each step.
                         console.log(`Step ${stepNumber} ("${step}"): Status is "${status}"`);
 
                         return (
