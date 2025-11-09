@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
@@ -140,7 +141,48 @@ module.exports = (io) => {
                 console.log(`[Socket ${socket.id}] Step 5: Time-series complete. Found ${cleanData.length} points.`);
 
 
-                // --- FINAL STEP: Send complete payload and save to DB ---
+                // --- [MODIFIED] FINAL STEP: Save to DB and send payload ---
+                console.log(`[Socket ${socket.id}] Saving analysis to database...`);
+
+                // Step 5a: Save the main search and get its ID
+                const { data: searchData, error: searchError } = await supabase
+                  .from('searches')
+                  .insert([{ dam_name: damName, lat: lat, lon: lng }])
+                  .select('id')
+                  .single(); // We only inserted one, so get it back
+
+                if (searchError) {
+                    console.error('Supabase search insert error:', searchError);
+                    throw new Error(`Failed to save search: ${searchError.message}`);
+                }
+                
+                const newSearchId = searchData.id;
+
+                // Step 5b: Prepare and save the time-series readings
+                if (cleanData && cleanData.length > 0) {
+                    const readingsToInsert = cleanData.map(reading => ({
+                      search_id: newSearchId,
+                      timestamp: reading.date, // 'date' is 'YYYY-MM-dd' string
+                      water_level: reading.waterLevel
+                    }));
+        
+                    // Bulk insert all readings
+                    const { error: readingsError } = await supabase
+                      .from('water_level_readings')
+                      .insert(readingsToInsert);
+        
+                    if (readingsError) {
+                        console.error('Supabase readings insert error:', readingsError);
+                        // Don't throw an error, just log it. The main analysis was still successful.
+                        console.warn(`[Socket ${socket.id}] Failed to save time-series data. Proceeding anyway.`);
+                    } else {
+                        console.log(`[Socket ${socket.id}] Saved ${readingsToInsert.length} time-series points.`);
+                    }
+                } else {
+                    console.warn(`[Socket ${socket.id}] No time-series data to save.`);
+                }
+
+                // Step 5c: Send the payload to the client
                 const finalPayload = {
                     coords: { lat, lon: lng },
                     waterPolygon: geometry,
@@ -148,9 +190,7 @@ module.exports = (io) => {
                     timeSeriesData: cleanData
                 };
 
-                await supabase.from('searches').insert([{ dam_name: damName, lat: lat, lon: lng }]);
                 console.log(`[Socket ${socket.id}] Analysis complete. Sending 'analysis-complete' event.`);
-
                 socket.emit('analysis-complete', { results: finalPayload });
 
             } catch (error) {
@@ -163,6 +203,69 @@ module.exports = (io) => {
             console.log(`❌ [SERVER LOG] User disconnected: ${socket.id}`);
         });
     });
+
+    // --- [NEW] HTTP Route for Water Level Difference ---
+    router.get('/water-level-difference', async (req, res) => {
+      // We need a dam_name to know which dam's data to query
+      const { dam_name, start, end } = req.query;
+
+      if (!dam_name || !start || !end) {
+        return res.status(400).json({ 
+          error: "Missing 'dam_name', 'start', or 'end' query parameters." 
+        });
+      }
+
+      try {
+        // Step 1: Find the most recent search_id for this dam name.
+        // This ensures we are querying data for the correct (and latest) analysis.
+        const { data: searchData, error: searchError } = await supabase
+          .from('searches')
+          .select('id')
+          .eq('dam_name', dam_name)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (searchError || !searchData) {
+          throw new Error('Could not find a previous analysis for this dam. Please run a search first.');
+        }
+
+        const { id: search_id } = searchData;
+
+        // Step 2: Fetch the water level data for that search_id within the date range.
+        const { data, error } = await supabase
+          .from('water_level_readings')
+          .select('timestamp, water_level')
+          .eq('search_id', search_id)
+          .gte('timestamp', start) // Greater than or equal to start time
+          .lte('timestamp', end)   // Less than or equal to end time
+          .order('timestamp', { ascending: true });
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          return res.status(404).json({ error: "No data found for the selected range." });
+        }
+
+        // Step 3: Calculate the difference
+        const start_level = data[0].water_level;
+        const end_level = data[data.length - 1].water_level;
+        const difference = end_level - start_level;
+
+        // Step 4: Return the full response
+        res.json({
+          start_level: start_level,
+          end_level: end_level,
+          difference: parseFloat(difference.toFixed(2)),
+          data: data, // The full array for the chart
+        });
+
+      } catch (error) {
+        console.error("Error fetching water level difference:", error.message);
+        res.status(500).json({ error: error.message || "Could not fetch water level data." });
+      }
+    });
+
 
     // --- Regular HTTP Routes ---
     router.get('/history', async (req, res) => {
