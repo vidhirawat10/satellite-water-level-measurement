@@ -1,5 +1,3 @@
-// client/src/components/WaterLevelComparer.js
-
 import React, { useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -9,8 +7,10 @@ import {
  * This component needs one prop: 'currentDamName'.
  * It will not show anything unless a dam has been successfully
  * searched for and its name is passed as this prop.
+ *
+ * New prop: onRangePrediction(predictionObject|null) -> called after successful fetch
  */
-function WaterLevelComparer({ currentDamName }) {
+function WaterLevelComparer({ currentDamName, onRangePrediction }) {
   // State for the date pickers
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -24,6 +24,8 @@ function WaterLevelComparer({ currentDamName }) {
   const handleCompare = async () => {
     if (!startTime || !endTime) {
       setError("Please select both a start and end time.");
+      // also clear any previously shown range prediction
+      if (onRangePrediction) onRangePrediction(null);
       return;
     }
 
@@ -51,8 +53,15 @@ function WaterLevelComparer({ currentDamName }) {
       const data = await response.json();
       setComparisonData(data);
 
+      // Send prediction (if provided) up to parent so FloodPredictionCard can show it
+      if (onRangePrediction) {
+        if (data.prediction) onRangePrediction(data.prediction);
+        else onRangePrediction(null);
+      }
+
     } catch (err) {
       setError(err.message);
+      if (onRangePrediction) onRangePrediction(null);
     } finally {
       setLoading(false);
     }
@@ -73,12 +82,12 @@ function WaterLevelComparer({ currentDamName }) {
   };
 
   // Format data for the chart
-  const formattedChartData = comparisonData?.data.map(item => ({
+  const formattedChartData = comparisonData?.data?.map(item => ({
     ...item,
     // Format timestamp for a nicer tooltip/axis
     time: new Date(item.timestamp).toLocaleDateString(),
     water_level: parseFloat(item.water_level.toFixed(2)),
-  }));
+  })) || [];
 
   // If no dam is selected yet, show a placeholder.
   if (!currentDamName) {

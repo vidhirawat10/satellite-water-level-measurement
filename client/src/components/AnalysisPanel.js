@@ -4,24 +4,40 @@ import {
     Tooltip, Legend, CartesianGrid, ResponsiveContainer 
 } from 'recharts';
 
-// A small helper component to show changes with colored arrows
-const ChangeIndicator = ({ change }) => {
+// --- [2. UPDATE ChangeIndicator TO USE THE 'decision' PROP] ---
+const ChangeIndicator = ({ change, decision }) => {
     if (change === null || isNaN(change)) {
         return <span>-</span>;
     }
+    
     const isPositive = change > 0;
-    const color = isPositive ? 'green' : 'red';
     const arrow = isPositive ? '▲' : '▼';
 
+    // Start with original logic
+    let color = isPositive ? 'green' : 'red';
+    let fontWeight = 'bold';
+
+    // NEW: Check for risk
+    // Check if a decision object exists, the change is positive,
+    // and the change meets or exceeds the risk threshold.
+    const isRisk = decision && isPositive && change >= decision.rateThreshold;
+
+    if (isRisk) {
+        color = 'red'; // Override to red for risk
+        fontWeight = '900'; // Make it extra bold
+    }
+
     return (
-        <span style={{ color, fontWeight: 'bold' }}>
+        <span style={{ color, fontWeight }}>
             {change.toFixed(2)}m {arrow}
         </span>
     );
 };
+// --- [END OF CHANGE] ---
 
 
-const AnalysisPanel = ({ analysisData, timeSeriesData }) => {
+// --- [1. ACCEPT 'decision' PROP] ---
+const AnalysisPanel = ({ analysisData, timeSeriesData, decision }) => {
     // If there's no data yet, show a placeholder
     if (!analysisData || !timeSeriesData) {
         return (
@@ -55,7 +71,7 @@ const AnalysisPanel = ({ analysisData, timeSeriesData }) => {
         <div className="analysis-panel card">
             <h3>📊 Analysis Dashboard</h3>
 
-            {/* Section 1: Elevation Profile */}
+            {/* Section 1: Elevation Profile (No changes) */}
             <div className="sub-panel">
                 <h4>Elevation Profile</h4>
                 <ResponsiveContainer width="100%" height={250}>
@@ -70,7 +86,7 @@ const AnalysisPanel = ({ analysisData, timeSeriesData }) => {
                 </ResponsiveContainer>
             </div>
             
-            {/* Section 2: Water Levels by Depth */}
+            {/* Section 2: Water Levels by Depth (No changes) */}
             <div className="sub-panel">
                 <h4>Water Levels</h4>
                 <table className="results-table">
@@ -110,7 +126,10 @@ const AnalysisPanel = ({ analysisData, timeSeriesData }) => {
                             <tr key={reading.date}>
                                 <td>{new Date(reading.date).toLocaleDateString()}</td>
                                 <td>{reading.waterLevel.toFixed(2)}</td>
-                                <td><ChangeIndicator change={reading.change} /></td>
+                                
+                                {/* --- [3. PASS 'decision' PROP DOWN] --- */}
+                                <td><ChangeIndicator change={reading.change} decision={decision} /></td>
+
                             </tr>
                         ))}
                     </tbody>

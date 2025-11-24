@@ -1,0 +1,20 @@
+{
+  "tehri": {
+    "fullName": "Tehri Dam",
+    "capacityM": 830.0,
+    "warnFrac": 0.9,
+    "rateThreshold": 1.0
+  },
+  "bhakra_nangal": {
+    "fullName": "Bhakra Nangal Dam",
+    "capacityM": 514.0,
+    "warnFrac": 0.9,
+    "rateThreshold": 1.0
+  },
+  "indira_sagar": {
+    "fullName": "Indira Sagar Dam",
+    "capacityM": 262.0,
+    "warnFrac": 0.9,
+    "rateThreshold": 0.5
+  }
+}
